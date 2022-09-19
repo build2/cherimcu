@@ -1,0 +1,242 @@
+# Let's use the cc module to get us the compiler paths, extract the target
+# etc. This only work if the compiler is reasonably GCC/Clang-like.
+#
+# If that's not the case, the alternative approach is to just import the
+# compiler executables and use that instead of {c,cxx}.path below, something
+# along these lines:
+#
+# import! c = clang%exe{clang}
+# import! cxx = clang%exe{clang++}
+#
+# Note that in this case all the {cc,c,cxx}.* variables will also have to be
+# replaced with custom versions (or thrown away if not applicable).
+#
+using c.config
+using cxx.config
+
+#assert ($cc.target == 'cheri-unknown-mcu') "compiler targeting cheri-unknown-mcu expected"
+
+# C and C++ source files.
+#
+define h: file
+define c: file
+
+define hxx: file
+define cxx: file
+
+h{*}: extension = h
+c{*}: extension = c
+
+hxx{*}: extension = hh
+cxx{*}: extension = cc
+
+# Library and compartment object files.
+#
+# Because these are compiled differently, we've made them distinct target
+# types so that we can have distinct rules.
+#
+define objl: file
+objl{*}: extension = o
+
+define objc: file
+objc{*}: extension = o
+
+# Library and compartment files.
+#
+define library: file
+library{*}: extension = a
+
+define compart: file
+compart{*}: extension = so
+
+# Firmware file.
+#
+define firmware: file
+firmware{*}: extension =
+
+# Regex pattern rules for compiling C and C++ source files to library and
+# compartment object files.
+#
+# For now we extract header dependencies as by-product of compilation which
+# means we have to list any auto-generated headers as prerequisites
+# explicitly. But we could switch to the pre-extraction with -MG if we wanted
+# to support auto-generated headers automatically. For details, see:
+# https://build2.org/release/0.15.0.xhtml#dyndep
+#
+[rule_name=c_compile_library] objl{~'/(.*)/'}: c{~'/\1/'}
+{{
+  s = $path($<[0])
+  o = $path($>)
+  t = $(o).t
+
+  poptions = $c.poptions $cc.poptions
+  coptions = $cc.coptions $c.coptions
+
+  depdb dyndep --byproduct --what=header --default-type=h --file $t
+
+  diag c --library ($<[0])
+
+  $c.path $poptions $coptions $c.mode -MD -MF $t -o $o -c $s
+}}
+
+[rule_name=cxx_compile_library] objl{~'/(.*)/'}: cxx{~'/\1/'}
+{{
+  s = $path($<[0])
+  o = $path($>)
+  t = $(o).t
+
+  poptions = $cxx.poptions $cc.poptions
+  coptions = $cc.coptions $cxx.coptions
+
+  depdb dyndep --byproduct --what=header --default-type=h --file $t
+
+  diag c++ --library ($<[0])
+
+  $cxx.path $poptions $coptions $cxx.mode -MD -MF $t -o $o -c $s
+}}
+
+[rule_name=c_compile_compart] objc{~'/(.*)/'}: c{~'/\1/'}
+{{
+  s = $path($<[0])
+  o = $path($>)
+  t = $(o).t
+
+  poptions = $c.poptions $cc.poptions
+  coptions = $cc.coptions $c.coptions
+
+  depdb dyndep --byproduct --what=header --default-type=h --file $t
+
+  diag c --compart ($<[0])
+
+  # Get the compartment target-specific value.
+  #
+  c = $compartment
+
+  if $empty($c)
+    exit "compartment variable is not set for ([name] $>)"
+  end
+
+  # If the source file has the same name as the compartment, pass some
+  # additional options.
+  #
+  if ($name($<[0]) == $c)
+    poptions += -DCOMPARTMENT=\"$c\"
+  end
+
+  $c.path $poptions $coptions $c.mode -fPIC -MD -MF $t -o $o -c $s
+}}
+
+[rule_name=cxx_compile_compart] objc{~'/(.*)/'}: cxx{~'/\1/'}
+{{
+  s = $path($<[0])
+  o = $path($>)
+  t = $(o).t
+
+  poptions = $cxx.poptions $cc.poptions
+  coptions = $cc.coptions $cxx.coptions
+
+  depdb dyndep --byproduct --what=header --default-type=h --file $t
+
+  diag c++ --compart ($<[0])
+
+  # Get the compartment target-specific value.
+  #
+  c = $compartment
+
+  if $empty($c)
+    exit "compartment variable is not set for ([name] $>)"
+  end
+
+  # If the source file has the same name as the compartment, pass some
+  # additional options.
+  #
+  if ($name($<[0]) == $c)
+    poptions += -DCOMPARTMENT=\"$c\"
+  end
+
+  $cxx.path $poptions $coptions $cxx.mode -fPIC -MD -MF $t -o $o -c $s
+}}
+
+# Regex pattern rule for linking libraries and compartments from one or
+# more object files.
+#
+# @@ Q: what tool do we use to link a library (compiler, linker directly)?
+# @@ Q: what tool do we use to link a compartment (compiler, linker directly)?
+#
+# @@ TODO: filter sources.
+#
+[rule_name=link_library] library{~'/(.*)/'}: objl{~'/(.*)/'}
+{{
+  s = $path($<)
+  o = $path($>)
+
+  diag ld --library $>
+
+  ar cr $o $s
+}}
+
+[rule_name=link_compart] compart{~'/(.*)/'}: objc{~'/(.*)/'}
+{{
+  s = $path($<)
+  o = $path($>)
+
+  loptions = $cc.loptions $cxx.loptions
+  libs     = $cxx.libs $cc.libs
+
+  diag ld --compart $>
+
+  $cxx.path $loptions $cxx.mode -shared -o $o $path($<) $libs
+}}
+
+# Regex pattern rule for linking the firmware from one or more compartments.
+#
+[rule_name=link_firmware] firmware{~'/(.*)/'}: compart{~'/(.*)/'}
+{{
+  s = $path($<)
+  o = $path($>)
+  t = $(o).cc
+
+  loptions = $cc.loptions $cxx.loptions
+  libs     = $cxx.libs $cc.libs
+
+  diag ld --firmware $>
+
+  # Get the names of all the compartments.
+  #
+  # @@ TODO: would have been cleaner to use the target type rather than
+  #    extension.
+  #
+  com_paths = $regex.apply($s, '(.+\.so)', '\1', format_no_copy)
+  com_names = $path.base($path.leaf($com_paths))
+
+  # Generate source file with main() that ties everything together (i.e.,
+  # this is our mock "linker script").
+  #
+  # Note: to disable automatic cleanup of this file at the end of the
+  # recipe (for example, for troubleshooting) uncomment &! below.
+  #
+  cat <<"EOF" >$t # &!$t
+  #include <iostream>
+
+  using namespace std;
+
+  // Emit compartment function declarations.
+  //
+  $regex.merge($com_names, '(.+)', 'extern "C" const char* \1 ();\n')
+
+  int main \(\)
+  {
+    // Emit compartment function calls.
+    //
+    $regex.merge($com_names, '(.+)', 'std::cerr << \1 () << std::endl;\n')
+  }
+  EOF
+
+  $cxx.path $loptions $cxx.mode -o $o $t $path($<) $libs
+}}
+
+# + compartment name passed when compiling
+# - "threads used to create some -D arguments to the compiler for a couple of other targets"
+# + linker script
+
+# @@ CI to make sure works on all platforms

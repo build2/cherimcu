@@ -1,0 +1,34 @@
+# Okay, now we want a library built from a couple of source files.
+#
+library{helpers}: objl{foo}: c{foo.c}
+library{helpers}: objl{bar}: cxx{bar.cc}
+
+# And a couple of isolated compartments. Real projects will have a load more
+# of these.
+#
+compart{example}: objc{example}: cxx{example.cc}
+compart{example}: objc{details}: cxx{details.cc}
+objc{example details}: compartment = example
+
+compart{example2}: objc{example2}: cxx{example2.cc}
+compart{example2}: objc{details2}: cxx{details2.cc}
+objc{example2 details2}: compartment = example2
+
+# And now we want to assemble it into a firmware image, with a load of
+# other metadata.
+#
+./: firmware{mydevice}: compart{example example2} library{helpers}
+
+
+# The following version can be achieved by rewriting the link_firmware in
+# C++.
+#
+#\
+
+library{helpers}: c{foo.c} cxx{bar.cc}
+
+compart{example}: cxx{example.cc details.cc}
+compart{example2}: cxx{example2.cc details2.cc}
+
+./: firmware{mydevice}: compart{example example2} library{helpers}
+#\
