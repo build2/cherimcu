@@ -203,11 +203,7 @@ firmware{*}: extension =
 
   # Get the names of all the compartments.
   #
-  # @@ TODO: would have been cleaner to use the target type rather than
-  #    extension.
-  #
-  com_paths = $regex.apply($s, '(.+\.so)', '\1', format_no_copy)
-  com_names = $path.base($path.leaf($com_paths))
+  com_names = $name($filter($<, compart))
 
   # Generate source file with main() that ties everything together (i.e.,
   # this is our mock "linker script").
