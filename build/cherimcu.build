@@ -163,11 +163,9 @@ firmware{*}: extension =
 # @@ Q: what tool do we use to link a library (compiler, linker directly)?
 # @@ Q: what tool do we use to link a compartment (compiler, linker directly)?
 #
-# @@ TODO: filter sources.
-#
 [rule_name=link_library] library{~'/(.*)/'}: objlib{~'/(.*)/'}
 {{
-  s = $path($<)
+  s = $path($filter($<, objlib))
   o = $path($>)
 
   diag ld --library $>
@@ -177,7 +175,7 @@ firmware{*}: extension =
 
 [rule_name=link_compart] compart{~'/(.*)/'}: objcom{~'/(.*)/'}
 {{
-  s = $path($<)
+  s = $path($filter($<, objcom))
   o = $path($>)
 
   loptions = $cc.loptions $cxx.loptions
@@ -185,14 +183,14 @@ firmware{*}: extension =
 
   diag ld --compart $>
 
-  $cxx.path $loptions $cxx.mode -shared -o $o $path($<) $libs
+  $cxx.path $loptions $cxx.mode -shared -o $o $s $libs
 }}
 
 # Regex pattern rule for linking the firmware from one or more compartments.
 #
 [rule_name=link_firmware] firmware{~'/(.*)/'}: compart{~'/(.*)/'}
 {{
-  s = $path($<)
+  s = $path($filter($<, compart library))
   o = $path($>)
   t = $(o).cc
 
@@ -228,11 +226,9 @@ firmware{*}: extension =
   }
   EOF
 
-  $cxx.path $loptions $cxx.mode -o $o $t $path($<) $libs
+  $cxx.path $loptions $cxx.mode -o $o $t $s $libs
 }}
 
 # + compartment name passed when compiling
 # - "threads used to create some -D arguments to the compiler for a couple of other targets"
 # + linker script
-
-# @@ CI to make sure works on all platforms
