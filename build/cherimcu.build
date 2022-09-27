@@ -35,11 +35,11 @@ cxx{*}: extension = cc
 # Because these are compiled differently, we've made them distinct target
 # types so that we can have distinct rules.
 #
-define objl: file
-objl{*}: extension = o
+define objlib: file
+objlib{*}: extension = o
 
-define objc: file
-objc{*}: extension = o
+define objcom: file
+objcom{*}: extension = o
 
 # Library and compartment files.
 #
@@ -63,7 +63,7 @@ firmware{*}: extension =
 # to support auto-generated headers automatically. For details, see:
 # https://build2.org/release/0.15.0.xhtml#dyndep
 #
-[rule_name=c_compile_library] objl{~'/(.*)/'}: c{~'/\1/'}
+[rule_name=c_compile_library] objlib{~'/(.*)/'}: c{~'/\1/'}
 {{
   s = $path($<[0])
   o = $path($>)
@@ -79,7 +79,7 @@ firmware{*}: extension =
   $c.path $poptions $coptions $c.mode -MD -MF $t -o $o -c $s
 }}
 
-[rule_name=cxx_compile_library] objl{~'/(.*)/'}: cxx{~'/\1/'}
+[rule_name=cxx_compile_library] objlib{~'/(.*)/'}: cxx{~'/\1/'}
 {{
   s = $path($<[0])
   o = $path($>)
@@ -95,7 +95,7 @@ firmware{*}: extension =
   $cxx.path $poptions $coptions $cxx.mode -MD -MF $t -o $o -c $s
 }}
 
-[rule_name=c_compile_compart] objc{~'/(.*)/'}: c{~'/\1/'}
+[rule_name=c_compile_compart] objcom{~'/(.*)/'}: c{~'/\1/'}
 {{
   s = $path($<[0])
   o = $path($>)
@@ -126,7 +126,7 @@ firmware{*}: extension =
   $c.path $poptions $coptions $c.mode -fPIC -MD -MF $t -o $o -c $s
 }}
 
-[rule_name=cxx_compile_compart] objc{~'/(.*)/'}: cxx{~'/\1/'}
+[rule_name=cxx_compile_compart] objcom{~'/(.*)/'}: cxx{~'/\1/'}
 {{
   s = $path($<[0])
   o = $path($>)
@@ -165,7 +165,7 @@ firmware{*}: extension =
 #
 # @@ TODO: filter sources.
 #
-[rule_name=link_library] library{~'/(.*)/'}: objl{~'/(.*)/'}
+[rule_name=link_library] library{~'/(.*)/'}: objlib{~'/(.*)/'}
 {{
   s = $path($<)
   o = $path($>)
@@ -175,7 +175,7 @@ firmware{*}: extension =
   ar cr $o $s
 }}
 
-[rule_name=link_compart] compart{~'/(.*)/'}: objc{~'/(.*)/'}
+[rule_name=link_compart] compart{~'/(.*)/'}: objcom{~'/(.*)/'}
 {{
   s = $path($<)
   o = $path($>)
