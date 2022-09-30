@@ -11,6 +11,8 @@
 # Note that in this case all the {cc,c,cxx}.* variables will also have to be
 # replaced with custom versions (or thrown away if not applicable).
 #
+cxx.std = latest
+
 using c.config
 using cxx.config
 
@@ -48,6 +50,23 @@ library{*}: extension = a
 
 define compart: file
 compart{*}: extension = so
+
+# Thread target.
+#
+# Note that this is a non-file target (similar to make's PHONY) that is meant
+# to carry thread information in the following target-specific variables:
+#
+# [string] compartment          = 'example'
+# [uint64] priority             = 1
+# [string] entry_point          = 'entry_point'
+# [uint64] stack_size           = 0x400
+# [uint64] trusted_stack_frames = 2
+#
+# @@ TODO: It would be better to assign types to variables. Then the user
+#    won't have to specify types in the buildfile. See
+#    https://github.com/build2/build2/issues/213
+#
+define thread: alias
 
 # Firmware file.
 #
@@ -186,49 +205,170 @@ firmware{*}: extension =
   $cxx.path $loptions $cxx.mode -shared -o $o $s $libs
 }}
 
-# Regex pattern rule for linking the firmware from one or more compartments.
+# Regex pattern rule for linking the firmware from one or more compartments
+# and one or more threads.
 #
-[rule_name=link_firmware] firmware{~'/(.*)/'}: compart{~'/(.*)/'}
+[rule_name=link_firmware] firmware{~'/(.*)/'}: compart{~'/(.*)/'} \
+                                               thread{~'/(.*)/'}
 {{
+  # Extract into parallel arrays and change-track the thread information.
+  #
+  # Note that we can only query target-specific variables in the depdb
+  # preamble of the recipe because they are not automatically change-tracked.
+  #
+  t_coms = [strings]
+  t_pris = [uint64s]
+  t_ents = [strings]
+  t_stks = [uint64s]
+  t_tsfs = [uint64s]
+
+  threads = $filter($<, thread)
+
+  # @@ TODO: Check that all the values are present.
+  #
+  for t: $threads
+    t_coms += $($t: compartment)
+    t_pris += $($t: priority)
+    t_ents += $($t: entry_point)
+    t_stks += $($t: stack_size)
+    t_tsfs += $($t: trusted_stack_frames)
+  end
+
+  depdb hash $t_coms
+  depdb hash $t_pris
+  depdb hash $t_ents
+  depdb hash $t_stks
+  depdb hash $t_tsfs
+
+  diag ld --firmware $>
+
+  thread_count = $size($threads)
+  compart_names = [strings] $name($filter($<, compart))
+
+  # Verify the compartments specified in threads exist.
+  #
+  for i: $integer_sequence(0, $thread_count)
+    c = ($t_coms[$i])
+
+    if! $find($compart_names, $c)
+      exit "unknown compartment $c in ([name] $threads[$i])"
+    end
+  end
+
   s = $path($filter($<, compart library))
   o = $path($>)
-  t = $(o).cc
+
+  load = $(o)-loader.cc
+  schd = $(o)-scheduler.cc
+  lscr = $(o)-linker-script.cc
 
   loptions = $cc.loptions $cxx.loptions
   libs     = $cxx.libs $cc.libs
 
-  diag ld --firmware $>
+  # This should probably come from a static header.
+  #
+  thread_def = \
+  '
+  #include <cstdint>
 
-  # Get the names of all the compartments.
-  #
-  com_names = $name($filter($<, compart))
+  struct thread
+  {
+    const char*    compartment;
+    std::uint64_t  priority;
+    const char*  (*entry_point) ();
+    std::uint64_t  stack_size;
+    std::uint64_t  trusted_stack_frames;
+  };'
 
-  # Generate source file with main() that ties everything together (i.e.,
-  # this is our mock "linker script").
+  # Generate the loader.
   #
-  # Note: to disable automatic cleanup of this file at the end of the
-  # recipe (for example, for troubleshooting) uncomment &! below.
+  # Hint: "EOF" means with expansion ($, (), etc) while EOF means without.
   #
-  cat <<"EOF" >$t # &!$t
+  # Hint: to disable automatic cleanup of this file at the end of the recipe
+  # (for example, for troubleshooting) uncomment the corresponding &! cleanup
+  # specification below.
+  #
+  cat <<"EOF" >$load # &!$load
+  EOF
+
+  # Map compartment entry points to thread entry points (this is a bit silly,
+  # admittedly, but the setup description is quite fuzzy on the exact
+  # semantics, so this is just an illustration).
+  #
+  for i: $integer_sequence(0, $thread_count)
+    t_com = ($t_coms[$i])
+    t_ent = ($t_ents[$i])
+
+    cat <<"EOF" >>$load
+      extern "C" const char* $t_com \(\);
+      extern "C" const char* $t_ent \(\)
+      {
+        return $t_com \(\);
+      }
+    EOF
+  end
+
+  # Generate the scheduler.
+  #
+  cat <<"EOF" >$schd # &!$schd
+  $thread_def
+  EOF
+
+  # Entry point declarations (defined by the loader).
+  #
+  for t_ent: $t_ents
+    cat <<"EOF" >>$schd
+      extern "C" const char* $t_ent \(\);
+    EOF
+  end
+
+  cat <<"EOF" >>$schd
+  thread threads[$thread_count] = {
+  EOF
+
+  for i: $integer_sequence(0, $thread_count)
+    t_com = ($t_coms[$i])
+    t_pri = ($t_pris[$i])
+    t_ent = ($t_ents[$i])
+    t_stk = ($t_stks[$i])
+    t_tsf = ($t_tsfs[$i])
+    cat <<"EOF" >>$schd
+      {"$t_com", $t_pri, &$t_ent, $string($t_stk, 16, 8), $t_tsf},
+    EOF
+  end
+
+  echo '};' >>$schd
+
+  # Generate the linker script.
+  #
+  # Actually it's a source file with main() that ties everything together
+  # (i.e., this is our mock "linker script").
+  #
+  cat <<"EOF" >$lscr # &!$lscr
+  #include <cstddef>
+
+  $thread_def
+
+  const std::size_t thread_count = $thread_count;
+  extern thread threads[thread_count];
+  EOF
+
+  cat <<EOF >>$lscr
   #include <iostream>
 
   using namespace std;
 
-  // Emit compartment function declarations.
-  //
-  $regex.merge($com_names, '(.+)', 'extern "C" const char* \1 ();\n')
-
-  int main \(\)
+  int main ()
   {
-    // Emit compartment function calls.
-    //
-    $regex.merge($com_names, '(.+)', 'std::cerr << \1 () << std::endl;\n')
+    for (size_t i (0); i != thread_count; ++i)
+    {
+      const thread& t (threads[i]);
+
+      cerr << "starting thread " << i << " in " << t.compartment << ": "
+           << t.entry_point () << endl;
+    }
   }
   EOF
 
-  $cxx.path $loptions $cxx.mode -o $o $t $s $libs
+  $cxx.path $loptions $cxx.mode -o $o $load $schd $lscr $s $libs
 }}
-
-# + compartment name passed when compiling
-# - "threads used to create some -D arguments to the compiler for a couple of other targets"
-# + linker script

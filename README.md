@@ -9,6 +9,7 @@ the above description as follows:
 * library -- static library (`.a`)
 * compartment -- shared library (`.so`)
 * firmware    -- executable
+* loader and scheduler --  generated source files
 * firmware linker script -- generated source file with `main()`
 
 The files of interest are [`cherimcu/buildfile`][buildfile] which is what the

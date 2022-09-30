@@ -17,18 +17,60 @@ objcom{example2 details2}: compartment = example2
 # And now we want to assemble it into a firmware image, with a load of
 # other metadata.
 #
-./: firmware{mydevice}: compart{example example2} library{helpers}
+thread{example}:
+{
+  compartment          = [string] 'example'
+  priority             = [uint64] 1
+  entry_point          = [string] 'entry_point'
+  stack_size           = [uint64] 0x400
+  trusted_stack_frames = [uint64] 2
+}
 
+thread{example2}:
+{
+  compartment          = [string] 'example2'
+  priority             = [uint64] 2
+  entry_point          = [string] 'entry_point2'
+  stack_size           = [uint64] 0x4000
+  trusted_stack_frames = [uint64] 3
+}
 
-# The following version can be achieved by rewriting the link_firmware in
-# C++.
+./: firmware{mydevice}: compart{example example2} \
+                        library{helpers}          \
+                        thread{example example2}
+
+# The following version can be achieved by rewriting the link_* rules in C++.
+#
+# This version also shows a more canonical declaration order where we specify
+# the ultimate target first (which automatically becomes the default target).
 #
 #\
 
-library{helpers}: c{foo.c} cxx{bar.cc}
+firmware{mydevice}: thread{example example2}  \
+                    compart{example example2} \
+                    library{helpers}          \
+
+thread{example}:
+{
+  compartment          = [string] 'example'
+  priority             = [uint64] 1
+  entry_point          = [string] 'entry_point'
+  stack_size           = [uint64] 0x400
+  trusted_stack_frames = [uint64] 2
+}
+
+thread{example2}:
+{
+  compartment          = [string] 'example2'
+  priority             = [uint64] 2
+  entry_point          = [string] 'entry_point2'
+  stack_size           = [uint64] 0x4000
+  trusted_stack_frames = [uint64] 3
+}
 
 compart{example}: cxx{example.cc details.cc}
 compart{example2}: cxx{example2.cc details2.cc}
 
-./: firmware{mydevice}: compart{example example2} library{helpers}
+library{helpers}: c{foo.c} cxx{bar.cc}
+
 #\
