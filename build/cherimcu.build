@@ -62,11 +62,15 @@ compart{*}: extension = so
 # [uint64] stack_size           = 0x400
 # [uint64] trusted_stack_frames = 2
 #
-# @@ TODO: It would be better to assign types to variables. Then the user
-#    won't have to specify types in the buildfile. See
-#    https://github.com/build2/build2/issues/213
-#
 define thread: alias
+thread{*}:
+{
+  [string, visibility=target] compartment          = [null]
+  [uint64, visibility=target] priority             = [null]
+  [string, visibility=target] entry_point          = [null]
+  [uint64, visibility=target] stack_size           = [null]
+  [uint64, visibility=target] trusted_stack_frames = [null]
+}
 
 # Firmware file.
 #

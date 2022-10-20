@@ -19,20 +19,20 @@ objcom{example2 details2}: compartment = example2
 #
 thread{example}:
 {
-  compartment          = [string] 'example'
-  priority             = [uint64] 1
-  entry_point          = [string] 'entry_point'
-  stack_size           = [uint64] 0x400
-  trusted_stack_frames = [uint64] 2
+  compartment          = 'example'
+  priority             = 1
+  entry_point          = 'entry_point'
+  stack_size           = 0x400
+  trusted_stack_frames = 2
 }
 
 thread{example2}:
 {
-  compartment          = [string] 'example2'
-  priority             = [uint64] 2
-  entry_point          = [string] 'entry_point2'
-  stack_size           = [uint64] 0x4000
-  trusted_stack_frames = [uint64] 3
+  compartment          = 'example2'
+  priority             = 2
+  entry_point          = 'entry_point2'
+  stack_size           = 0x4000
+  trusted_stack_frames = 3
 }
 
 ./: firmware{mydevice}: compart{example example2} \
@@ -52,20 +52,20 @@ firmware{mydevice}: thread{example example2}  \
 
 thread{example}:
 {
-  compartment          = [string] 'example'
-  priority             = [uint64] 1
-  entry_point          = [string] 'entry_point'
-  stack_size           = [uint64] 0x400
-  trusted_stack_frames = [uint64] 2
+  compartment          = 'example'
+  priority             = 1
+  entry_point          = 'entry_point'
+  stack_size           = 0x400
+  trusted_stack_frames = 2
 }
 
 thread{example2}:
 {
-  compartment          = [string] 'example2'
-  priority             = [uint64] 2
-  entry_point          = [string] 'entry_point2'
-  stack_size           = [uint64] 0x4000
-  trusted_stack_frames = [uint64] 3
+  compartment          = 'example2'
+  priority             = 2
+  entry_point          = 'entry_point2'
+  stack_size           = 0x4000
+  trusted_stack_frames = 3
 }
 
 compart{example}: cxx{example.cc details.cc}
